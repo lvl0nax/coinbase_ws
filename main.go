@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	fiber "github.com/gofiber/fiber/v2"
 )
@@ -32,5 +33,10 @@ func main() {
 		return c.JSON(TickerResponse{Tickers: tickerList})
 	})
 
-	webApp.Listen(":3000")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000"
+	}
+
+	webApp.Listen("0.0.0.0:" + port)
 }
