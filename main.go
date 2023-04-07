@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net/url"
+	"strings"
 	"time"
 
 	"nhooyr.io/websocket"
@@ -13,26 +17,20 @@ import (
 
 const (
 	ChannelTicker    string = "ticker"
+	Orderbookchannel string = "level2"
 	SubscriptionType string = "subscribe"
+	Apikey           string = "test"
+	secret           string = "secret"
 )
 
-type Message struct {
-	Type       string   `json:"type"`
-	ProductIDs []string `json:"product_ids"`
-	Channels   []string `json:"channels"`
-}
+const Address = "wss://advanced-trade-ws.coinbase.com"
 
-type Ticker struct {
-	Type      string    `json:"type"`
-	Time      time.Time `json:"time"`
-	ProductID string    `json:"product_id"`
-	Price     string    `json:"price"`
-	Open24H   string    `json:"open_24h"`
-	BestBid   string    `json:"best_bid"`
-	BestAsk   string    `json:"best_ask"`
+func buildSing(timeNow int64, products []string) string {
+	stringToSign := fmt.Sprintln(timeNow, Orderbookchannel, strings.Join(products, ","))
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write([]byte(stringToSign))
+	return hex.EncodeToString(h.Sum(nil))
 }
-
-const Address = "wss://ws-feed.exchange.coinbase.com"
 
 func main() {
 	//interrupt := make(chan os.Signal, 1)
@@ -50,10 +48,17 @@ func main() {
 	defer conn.Close(websocket.StatusInternalError, "the sky is falling")
 
 	// Subscribe to the BTC-USD ticker channel.
+	timeNow := time.Now().Unix()
+	productIds := []string{"BTC-USD", "ETH-USD"}
+	signature := buildSing(timeNow, productIds)
+
 	sub := Message{
 		Type:       SubscriptionType,
-		ProductIDs: []string{"BTC-USD"},
-		Channels:   []string{ChannelTicker},
+		ProductIDs: productIds,
+		Channel:    Orderbookchannel,
+		Timestamp:  timeNow,
+		ApiKey:     Apikey,
+		Signature:  signature,
 	}
 
 	if err := wsjson.Write(context.Background(), conn, sub); err != nil {
@@ -63,12 +68,13 @@ func main() {
 
 	// Listen indefinitely for messages until an interrupt signal is received.
 	for {
-		var ticker Ticker
-		if err := wsjson.Read(context.Background(), conn, &ticker); err != nil {
+		var orderbook OrderBook
+		if err := wsjson.Read(context.Background(), conn, &orderbook); err != nil {
 			log.Fatal(err)
 			return
 		}
 
-		fmt.Printf("%s: %s | %s | %s | %s \n", ticker.ProductID, ticker.Price, ticker.BestBid, ticker.BestAsk, ticker.Time)
+		//fmt.Printf("%s: %s | %s | %s | %s \n", ticker.ProductID, ticker.Price, ticker.BestBid, ticker.BestAsk, ticker.Time)
+		fmt.Println(orderbook)
 	}
 }
